@@ -17,7 +17,6 @@ CHANNEL_ID = "@bdcapsoine"
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 bot = Bot(token=BOT_TOKEN)
 
-# তোমার বলা মতো মুড অনুযায়ী ইমোজি
 MOOD_EMOJI = {
     "কষ্ট": ["💔", "🥀", "😢", "🌧️"],
     "ভালোবাসা": ["❤️", "🥰", "💌", "✨"],
@@ -26,12 +25,20 @@ MOOD_EMOJI = {
     "অপেক্ষা": ["⏳", "🌙", "💫", "🤍"]
 }
 
+# যদি AI ফেইল করে, এখান থেকে পোস্ট করবে, তাই Error আর চ্যানেলে যাবে না
+FALLBACK_CAPTIONS = [
+    "তোমাকে ভুলে যাওয়া সহজ না,\nভুলে থাকার অভিনয়টা কঠিন।\nরোজ রাতে নিজের সাথে যুদ্ধ করি,\nআর দিনের বেলায় হাসি।",
+    "কিছু মানুষ থাকে,\nযারা চলে গিয়েও থেকে যায়।\nকথায় নয়, অভ্যাসে।\nমনে নয়, নিঃশ্বাসে।",
+    "অপেক্ষাটা খারাপ না,\nখারাপ হলো যার জন্য অপেক্ষা করছি\nসে বুঝতেই পারে না\nআমি তার জন্য থেমে আছি।",
+    "সবাই বলে ভালো আছি,\nকেউ জিজ্ঞেস করে না\nভালো থাকার অভিনয়টা\nকতটা কঠিন হচ্ছে।",
+    "তুমি চলে গেছো ঠিকই,\nকিন্তু তোমার স্মৃতি\nআমার প্রতিটা রাতের\nঘুম কেড়ে নেয়।",
+    "ভালোবাসা সুন্দর,\nযদি মানুষটা সঠিক হয়।\nআর ভালোবাসা সবচেয়ে কষ্টের,\nযদি মানুষটা ভুল হয়।",
+    "মধ্যরাতে ঘুম ভেঙে গেলে\nবুঝি, তুমি এখনো\nআমার কোথাও\nরয়ে গেছো।"
+]
+
 async def generate_ai_caption():
     try:
-        # 1. এলোমেলো লাইন সিলেক্ট - তোমার বলা মতো
         line_choice = random.choice(["5-7", "12-14"])
-
-        # 2. টপিক আর মুড
         topics = [
             ("না পাওয়ার কষ্ট", "কষ্ট"),
             ("আবেগী ভালোবাসা", "ভালোবাসা"),
@@ -40,33 +47,32 @@ async def generate_ai_caption():
             ("তার অপেক্ষায়", "অপেক্ষা")
         ]
         topic, mood = random.choice(topics)
-
-        # 3. বিভিন্ন স্টাইল যাতে নজর কাড়ে
-        styles = [
-            "প্রতি লাইন ছোট কবিতার মতো",
-            "গল্পের মতো করে",
-            "প্রশ্ন দিয়ে শুরু করবে",
-            "শেষ লাইনে একটা চমক থাকবে"
-        ]
+        styles = ["কবিতার মতো ছোট লাইনে", "গল্পের মতো করে", "প্রশ্ন দিয়ে শুরু", "শেষ লাইনে চমক"]
         style = random.choice(styles)
+        prompt = f"'{topic}' niye {line_choice} liner abegi bangla caption lekho. Style: {style}. Hashtag, emoji chara sudhu caption."
 
-        prompt = f"'{topic}' niye {line_choice} liner abegi bangla caption lekho. Style: {style}. Bhasha khub sundor hobe, manush er mon chuye jabe. Kono hashtag dio na, emoji dio na, sudhu caption dio."
+        print(f"AI try: {line_choice} line | {topic}")
 
-        print(f"বানাচ্ছি: {line_choice} লাইন | {topic} | {style}")
-
+        # নতুন লিংক, সাথে User-Agent যাতে ব্লক না করে
         url = f"https://text.pollinations.ai/{prompt}"
-        res = requests.get(url, timeout=30)
-        caption = res.text.strip()
+        headers = {"User-Agent": "Mozilla/5.0"}
+        res = requests.get(url, headers=headers, timeout=40)
 
-        # 4. শেষে মুড অনুযায়ী ইমোজি যোগ করা - তোমার বলা মতো
+        text = res.text.strip()
+
+        # যদি Error JSON আসে, তাহলে এখানেই আটকে দেবে, চ্যানেলে যাবে না
+        if "error" in text.lower() or "queue full" in text.lower() or "429" in text or len(text) < 20:
+            raise Exception(f"Pollinations busy: {text[:50]}")
+
         emojis = random.sample(MOOD_EMOJI[mood], 2)
-        final_caption = f"{caption}\n\n{''.join(emojis)}"
-
-        return final_caption
+        return f"{text}\n\n{''.join(emojis)}"
 
     except Exception as e:
-        print(f"AI Error: {e}")
-        return "ভুলে গেছো বললেই কি ভোলা যায়?\nকিছু মানুষ স্মৃতিতে নয়,\nঅভ্যাসে থেকে যায়।\nতাকে ছাড়া সব আছে,\nশুধু ভালো থাকাটা নেই।\n\n💔🥀"
+        print(f"AI Fail, fallback dicchi: {e}")
+        caption = random.choice(FALLBACK_CAPTIONS)
+        mood = random.choice(list(MOOD_EMOJI.keys()))
+        emojis = random.sample(MOOD_EMOJI[mood], 2)
+        return f"{caption}\n\n{''.join(emojis)}"
 
 async def auto_job():
     print(f"✅ Bot চালু -> {CHANNEL_ID}")
@@ -78,7 +84,6 @@ async def auto_job():
         print(f"Telegram Error: {e}")
 
     while True:
-        # তোমার বলা মতো ২০-৫০ মিনিট এলোমেলো টাইমে
         wait = random.randint(20, 50)
         print(f"পরের পোস্ট {wait} মিনিট পর...")
         await asyncio.sleep(wait * 60)
