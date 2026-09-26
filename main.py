@@ -2,22 +2,32 @@ import asyncio
 import random
 import json
 import os
+import threading
+from flask import Flask
 from telegram import Bot
-import google.generativeai as genai
+from google import genai
 
-# Render থেকে নেবে
+# Render কে জাগিয়ে রাখার জন্য Flask
+app = Flask(__name__)
+@app.route('/')
+def home():
+    return "Bot is running for @bdcapsoine"
+
+def run_flask():
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
+
+# তোমার চ্যানেল
+CHANNEL_ID = "@bdcapsoine"
+
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-
-# তোমার চ্যানেল ফিক্স করে দিলাম
-CHANNEL_ID = "@bdcapsoine"
 
 if not BOT_TOKEN or not GEMINI_API_KEY:
     print("❌ Render এ BOT_TOKEN আর GEMINI_API_KEY বসাওনি!")
     exit()
 
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
+# নতুন google-genai লাইব্রেরী অনুযায়ী
+client = genai.Client(api_key=GEMINI_API_KEY)
 bot = Bot(token=BOT_TOKEN)
 
 USED_FILE = "used_captions.json"
@@ -31,30 +41,29 @@ def load_used():
             return set()
     return set()
 
-def save_used(used_set):
+def save_used(s):
     with open(USED_FILE, "w", encoding="utf-8") as f:
-        json.dump(list(used_set), f, ensure_ascii=False)
+        json.dump(list(s), f, ensure_ascii=False)
 
 used_captions = load_used()
 
 async def generate_ai_caption():
-    topics = ["আবেগী ভালোবাসা", "না পাওয়ার কষ্ট", "একাকিত্ব", "অভিমান", "মধ্যরাতের অনুভূতি", "অপেক্ষা"]
+    topics = ["আবেগী ভালোবাসা", "না পাওয়ার কষ্ট", "একাকিত্ব", "অভিমান", "মধ্যরাতের অনুভূতি"]
     topic = random.choice(topics)
-
-    prompt = f"""
-    '{topic}' বিষয়ে 5-7 লাইনের একটি আবেগী বাংলা ক্যাপশন লেখো।
-    নিয়ম: 
-    1. অবশ্যই 5-7 লাইন হবে।
-    2. একটু ডিজাইন/বর্ডার সহকারে লিখবে।
-    3. শেষে 2 টা ইমোজি দিবে।
-    4. হ্যাশট্যাগ দিবে না।
-    """
+    
+    prompt = f"'{topic}' বিষয়ে 5-7 লাইনের আবেগী, কাব্যিক বাংলা ক্যাপশন লেখো। একটু ডিজাইন দিবে, শেষে 2টা ইমোজি দিবে। হ্যাশট্যাগ দিবে না।"
 
     try:
-        response = await model.generate_content_async(prompt)
+        # নতুন লাইব্রেরীর নিয়ম
+        response = client.models.generate_content(
+            model='gemini-2.0-flash',
+            contents=prompt
+        )
         caption = response.text.strip()
-        if caption in used_captions:
+        
+        if caption in used_captions or len(caption) < 20:
             return await generate_ai_caption()
+            
         used_captions.add(caption)
         save_used(used_captions)
         return caption
@@ -63,16 +72,20 @@ async def generate_ai_caption():
         return "তাকে ভালোবাসাটা ছিল আমার নীরব অভ্যাস,\nযেটা সে কখনো বুঝতেই পারেনি।\nআজ আমি কষ্ট পেতে শিখে গেছি,\nআর সে থাকতে ভুলে গেছে।\n\n💔 🥀"
 
 async def auto_job():
-    print(f"✅ Bot চালু হয়েছে -> {CHANNEL_ID} এ পোস্ট করবে...")
+    print(f"✅ Bot চালু -> {CHANNEL_ID}")
     while True:
         wait_minutes = random.randint(20, 50)
+        print(f"পরের পোস্ট {wait_minutes} মিনিট পর...")
         await asyncio.sleep(wait_minutes * 60)
+        
         caption = await generate_ai_caption()
         try:
             await bot.send_message(chat_id=CHANNEL_ID, text=caption)
-            print(f"✅ পোস্ট হয়েছে bdcapsoine এ")
+            print("✅ পোস্ট হয়েছে")
         except Exception as e:
-            print(f"Telegram Error: {e} - বটকে চ্যানেলে Admin করেছো তো?")
+            print(f"Telegram Error: {e}")
 
 if __name__ == "__main__":
+    # Flask আলাদা ভাবে চালু হবে
+    threading.Thread(target=run_flask).start()
     asyncio.run(auto_job())
