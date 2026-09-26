@@ -1,99 +1,106 @@
-import asyncio
-import random
-import requests
-import os
-import threading
+import asyncio, random, os, json
 from flask import Flask
+from threading import Thread
+import requests
 from telegram import Bot
 
-app = Flask(__name__)
+TOKEN = os.environ.get("BOT_TOKEN")
+CHANNEL = os.environ.get("CHANNEL_ID")
+
+app = Flask('')
 @app.route('/')
-def home():
-    return "Bot is running for @bdcapsoine"
-def run_flask():
-    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
+def home(): return "Bot Alive & Buffering!"
+Thread(target=lambda: app.run(host='0.0.0.0', port=8080)).start()
 
-CHANNEL_ID = "@bdcapsoine"
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-bot = Bot(token=BOT_TOKEN)
+bot = Bot(token=TOKEN)
 
-MOOD_EMOJI = {
-    "কষ্ট": ["💔", "🥀", "😢", "🌧️"],
-    "ভালোবাসা": ["❤️", "🥰", "💌", "✨"],
-    "একাকিত্ব": ["🌙", "🖤", "🍂", "🌌"],
-    "অভিমান": ["😔", "💭", "🥀", "🙂"],
-    "অপেক্ষা": ["⏳", "🌙", "💫", "🤍"]
-}
+BUFFER_FILE = "buffer.json"
+POSTED_FILE = "posted.json"
 
-# যদি AI ফেইল করে, এখান থেকে পোস্ট করবে, তাই Error আর চ্যানেলে যাবে না
-FALLBACK_CAPTIONS = [
-    "তোমাকে ভুলে যাওয়া সহজ না,\nভুলে থাকার অভিনয়টা কঠিন।\nরোজ রাতে নিজের সাথে যুদ্ধ করি,\nআর দিনের বেলায় হাসি।",
-    "কিছু মানুষ থাকে,\nযারা চলে গিয়েও থেকে যায়।\nকথায় নয়, অভ্যাসে।\nমনে নয়, নিঃশ্বাসে।",
-    "অপেক্ষাটা খারাপ না,\nখারাপ হলো যার জন্য অপেক্ষা করছি\nসে বুঝতেই পারে না\nআমি তার জন্য থেমে আছি।",
-    "সবাই বলে ভালো আছি,\nকেউ জিজ্ঞেস করে না\nভালো থাকার অভিনয়টা\nকতটা কঠিন হচ্ছে।",
-    "তুমি চলে গেছো ঠিকই,\nকিন্তু তোমার স্মৃতি\nআমার প্রতিটা রাতের\nঘুম কেড়ে নেয়।",
-    "ভালোবাসা সুন্দর,\nযদি মানুষটা সঠিক হয়।\nআর ভালোবাসা সবচেয়ে কষ্টের,\nযদি মানুষটা ভুল হয়।",
-    "মধ্যরাতে ঘুম ভেঙে গেলে\nবুঝি, তুমি এখনো\nআমার কোথাও\nরয়ে গেছো।"
-]
+def load_json(file, default):
+    if os.path.exists(file):
+        try: return json.load(open(file, encoding="utf-8"))
+        except: return default
+    return default
 
-async def generate_ai_caption():
+def save_json(file, data):
+    with open(file, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+buffer = load_json(BUFFER_FILE, [])
+posted = set(load_json(POSTED_FILE, []))
+
+def deco():
+    h = ["༆༒তও༊ক্যাপশন༊বক্স༒༆༒","꧁༒তও༊ক্যাপশন༊বক্স༒꧂","༺তও༊ক্যাপশন༊বক্স༻"]
+    e = ["🥀😢","🌙🌌","💔🥀","🌑💫","🤍🌙","💭🥺"]
+    return f"{random.choice(h)}\n{random.choice(e)}\n"
+
+async def generate_one_caption():
+    prompts = [
+        "তুমি একজন বাংলা কষ্টের ক্যাপশন রাইটার। 1-2 লাইনের একদম নতুন, হৃদয় ছোঁয়া কষ্টের ক্যাপশন লেখো। শুধু ক্যাপশন দাও।",
+        "একটি নতুন বাংলা sad status লেখো, 15-20 শব্দ, খুব ইমোশনাল, আনকমন।",
+        "একটি আনকমন বাংলা কষ্টের ক্যাপশন লেখো যা আগে কখনো লেখো নি"
+    ]
     try:
-        line_choice = random.choice(["5-7", "12-14"])
-        topics = [
-            ("না পাওয়ার কষ্ট", "কষ্ট"),
-            ("আবেগী ভালোবাসা", "ভালোবাসা"),
-            ("মধ্যরাতের একাকিত্ব", "একাকিত্ব"),
-            ("অভিমানী ভালোবাসা", "অভিমান"),
-            ("তার অপেক্ষায়", "অপেক্ষা")
-        ]
-        topic, mood = random.choice(topics)
-        styles = ["কবিতার মতো ছোট লাইনে", "গল্পের মতো করে", "প্রশ্ন দিয়ে শুরু", "শেষ লাইনে চমক"]
-        style = random.choice(styles)
-        prompt = f"'{topic}' niye {line_choice} liner abegi bangla caption lekho. Style: {style}. Hashtag, emoji chara sudhu caption."
+        p = random.choice(prompts) + f" random {random.randint(1,999999)}"
+        r = requests.get(f"https://text.pollinations.ai/{p}", timeout=30)
+        txt = r.text.strip()
+        if "queue" in txt.lower() or "error" in txt.lower() or len(txt) < 10 or len(txt) > 250: return None
+        if txt in posted or txt in buffer: return None
+        return txt
+    except: return None
 
-        print(f"AI try: {line_choice} line | {topic}")
-
-        # নতুন লিংক, সাথে User-Agent যাতে ব্লক না করে
-        url = f"https://text.pollinations.ai/{prompt}"
-        headers = {"User-Agent": "Mozilla/5.0"}
-        res = requests.get(url, headers=headers, timeout=40)
-
-        text = res.text.strip()
-
-        # যদি Error JSON আসে, তাহলে এখানেই আটকে দেবে, চ্যানেলে যাবে না
-        if "error" in text.lower() or "queue full" in text.lower() or "429" in text or len(text) < 20:
-            raise Exception(f"Pollinations busy: {text[:50]}")
-
-        emojis = random.sample(MOOD_EMOJI[mood], 2)
-        return f"{text}\n\n{''.join(emojis)}"
-
-    except Exception as e:
-        print(f"AI Fail, fallback dicchi: {e}")
-        caption = random.choice(FALLBACK_CAPTIONS)
-        mood = random.choice(list(MOOD_EMOJI.keys()))
-        emojis = random.sample(MOOD_EMOJI[mood], 2)
-        return f"{caption}\n\n{''.join(emojis)}"
-
-async def auto_job():
-    print(f"✅ Bot চালু -> {CHANNEL_ID}")
-    try:
-        caption = await generate_ai_caption()
-        await bot.send_message(chat_id=CHANNEL_ID, text=caption)
-        print("✅ প্রথম পোস্ট হয়েছে!")
-    except Exception as e:
-        print(f"Telegram Error: {e}")
-
+# AI দিয়ে বাফার ভরবে সবসময়
+async def buffer_filler():
+    global buffer
     while True:
-        wait = random.randint(20, 50)
-        print(f"পরের পোস্ট {wait} মিনিট পর...")
-        await asyncio.sleep(wait * 60)
         try:
-            caption = await generate_ai_caption()
-            await bot.send_message(chat_id=CHANNEL_ID, text=caption)
-            print("✅ পোস্ট হয়েছে")
+            if len(buffer) < 20: # 20 টা স্টক রাখবে
+                print(f"Buffer low ({len(buffer)}/20), generating...")
+                cap = await generate_one_caption()
+                if cap:
+                    buffer.append(cap)
+                    save_json(BUFFER_FILE, buffer)
+                    print(f"✅ Buffer added: {cap[:25]} | Total: {len(buffer)}")
+                else:
+                    await asyncio.sleep(15) # AI busy হলে 15s পর আবার
+                    continue
+            else:
+                await asyncio.sleep(60) # ভরা থাকলে 1 মিনিট ঘুম
         except Exception as e:
-            print(f"Telegram Error: {e}")
+            print(f"Filler error: {e}")
+            await asyncio.sleep(10)
+        await asyncio.sleep(10)
 
-if __name__ == "__main__":
-    threading.Thread(target=run_flask).start()
-    asyncio.run(auto_job())
+# টাইম অনুযায়ী বাফার থেকে পোস্ট করবে
+async def auto_poster():
+    global buffer, posted
+    await asyncio.sleep(15)
+    while True:
+        try:
+            if buffer:
+                cap = buffer.pop(0) # প্রথমটা নেবে
+                save_json(BUFFER_FILE, buffer)
+                posted.add(cap)
+                save_json(POSTED_FILE, list(posted)[-500:]) # শেষ 500 টা মনে রাখবে
+                
+                final = f"{deco()}\n{cap}\n\n{random.choice(['🥀','🌙','💔'])} {random.choice(['🥀','🌙','💔'])}"
+                await bot.send_message(chat_id=CHANNEL, text=final)
+                print(f"🚀 POSTED from buffer: {cap[:30]} | Left: {len(buffer)}")
+            else:
+                print("⚠️ Buffer empty, waiting for AI...")
+                await asyncio.sleep(30)
+                continue
+        except Exception as e:
+            print(f"Post Error: {e}")
+        await asyncio.sleep(random.randint(1500, 3000)) # 25-50 min
+
+async def main():
+    await asyncio.gather(buffer_filler(), auto_poster())
+
+try:
+    loop = asyncio.get_event_loop()
+    loop.create_task(main())
+    loop.run_forever()
+except:
+    asyncio.run(main())
