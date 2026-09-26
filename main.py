@@ -5,7 +5,7 @@ import requests
 from telegram import Bot
 
 TOKEN = os.environ.get("BOT_TOKEN")
-CHANNEL = os.environ.get("CHANNEL_ID")
+CHANNEL = "@bdcapsoine"  # তোমার চ্যানেল ফিক্স করে দিলাম
 
 app = Flask('')
 @app.route('/')
@@ -37,63 +37,57 @@ def deco():
 
 async def generate_one_caption():
     prompts = [
-        "তুমি একজন বাংলা কষ্টের ক্যাপশন রাইটার। 1-2 লাইনের একদম নতুন, হৃদয় ছোঁয়া কষ্টের ক্যাপশন লেখো। শুধু ক্যাপশন দাও।",
-        "একটি নতুন বাংলা sad status লেখো, 15-20 শব্দ, খুব ইমোশনাল, আনকমন।",
-        "একটি আনকমন বাংলা কষ্টের ক্যাপশন লেখো যা আগে কখনো লেখো নি"
+        "তুমি একজন বাংলা কষ্টের ক্যাপশন রাইটার। 1-8 লাইনের একদম নতুন, হৃদয় ছোঁয়া কষ্টের ক্যাপশন লেখো। শুধু ক্যাপশন দাও।",
+        "একটি নতুন বাংলা sad status লেখো, 15-20 শব্দ, খুব ইমোশনাল, আনকমন।"
     ]
     try:
         p = random.choice(prompts) + f" random {random.randint(1,999999)}"
         r = requests.get(f"https://text.pollinations.ai/{p}", timeout=30)
         txt = r.text.strip()
-        if "queue" in txt.lower() or "error" in txt.lower() or len(txt) < 10 or len(txt) > 250: return None
+        if len(txt) < 10 or len(txt) > 250 or "queue" in txt.lower(): return None
         if txt in posted or txt in buffer: return None
         return txt
     except: return None
 
-# AI দিয়ে বাফার ভরবে সবসময়
 async def buffer_filler():
     global buffer
     while True:
         try:
-            if len(buffer) < 20: # 20 টা স্টক রাখবে
+            if len(buffer) < 20:
                 print(f"Buffer low ({len(buffer)}/20), generating...")
                 cap = await generate_one_caption()
                 if cap:
                     buffer.append(cap)
                     save_json(BUFFER_FILE, buffer)
-                    print(f"✅ Buffer added: {cap[:25]} | Total: {len(buffer)}")
+                    print(f"✅ Buffer added | Total: {len(buffer)}")
                 else:
-                    await asyncio.sleep(15) # AI busy হলে 15s পর আবার
+                    await asyncio.sleep(15)
                     continue
             else:
-                await asyncio.sleep(60) # ভরা থাকলে 1 মিনিট ঘুম
-        except Exception as e:
-            print(f"Filler error: {e}")
-            await asyncio.sleep(10)
+                await asyncio.sleep(60)
+        except: await asyncio.sleep(10)
         await asyncio.sleep(10)
 
-# টাইম অনুযায়ী বাফার থেকে পোস্ট করবে
 async def auto_poster():
     global buffer, posted
     await asyncio.sleep(15)
     while True:
         try:
             if buffer:
-                cap = buffer.pop(0) # প্রথমটা নেবে
+                cap = buffer.pop(0)
                 save_json(BUFFER_FILE, buffer)
                 posted.add(cap)
-                save_json(POSTED_FILE, list(posted)[-500:]) # শেষ 500 টা মনে রাখবে
-                
-                final = f"{deco()}\n{cap}\n\n{random.choice(['🥀','🌙','💔'])} {random.choice(['🥀','🌙','💔'])}"
+                save_json(POSTED_FILE, list(posted)[-500:])
+                final = f"{deco()}\n{cap}\n\n{random.choice(['🥀','🌙','💔'])}"
                 await bot.send_message(chat_id=CHANNEL, text=final)
-                print(f"🚀 POSTED from buffer: {cap[:30]} | Left: {len(buffer)}")
+                print(f"🚀 POSTED: {cap[:30]} | Left: {len(buffer)}")
             else:
-                print("⚠️ Buffer empty, waiting for AI...")
+                print("⚠️ Buffer empty, waiting...")
                 await asyncio.sleep(30)
                 continue
         except Exception as e:
             print(f"Post Error: {e}")
-        await asyncio.sleep(random.randint(1500, 3000)) # 25-50 min
+        await asyncio.sleep(random.randint(1500, 3000))
 
 async def main():
     await asyncio.gather(buffer_filler(), auto_poster())
