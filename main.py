@@ -31,7 +31,7 @@ buffer = load_json(BUFFER_FILE, [])
 posted = set(load_json(POSTED_FILE, []))
 
 def deco():
-    h = ["༆༒তও༊ক্যাপশন༊বক্স༒༆༒","꧁༒তও༊ক্যাপশন༊বক্স༒꧂","༺তও༊ক্যাপশন༊বক্স༻"]
+    h = ["༆༒༊ক্যাপশন༊বক্স༒༆༒","꧁༒༊ক্যাপশন༊বক্স༒꧂","༺༊ক্যাপশন༊বক্স༻"]
     e = ["🥀😢","🌙🌌","💔🥀","🌑💫","🤍🌙","💭🥺"]
     return f"{random.choice(h)}\n{random.choice(e)}\n"
 
